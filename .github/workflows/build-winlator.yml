@@ -32,11 +32,19 @@ jobs:
               "System.Runtime.Intrinsics.X86.Avx.IsSupported": false,
               "System.Runtime.Intrinsics.X86.Avx2.IsSupported": false,
               "System.Runtime.Intrinsics.X86.Sse42.IsSupported": false,
-              "System.Runtime.Intrinsics.X86.Pclmulqdq.IsSupported": false
+              "System.Runtime.Intrinsics.X86.Pclmulqdq.IsSupported": false,
+              "System.GC.Server": false,
+              "System.GC.Concurrent": false,
+              "System.GC.HeapHardLimit": 536870912
             }
           }
           '@
           Set-Content -Path "MikuMikuModel/runtimeconfig.template.json" -Value $config
+
+      - name: Patch publish.bat for self-contained build
+        shell: pwsh
+        run: |
+          (Get-Content publish.bat) -replace '--no-self-contained', '--self-contained true -p:IncludeNativeLibrariesForSelfExtract=true' | Set-Content publish.bat
 
       - name: Build Miku Miku Library
         run: |
