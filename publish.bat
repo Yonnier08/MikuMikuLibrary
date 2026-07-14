@@ -1,11 +1,14 @@
 @echo off
 
 msbuild -p:Configuration=Release -p:Platform=x64 MikuMikuLibrary.Native\MikuMikuLibrary.Native.vcxproj
+
 call :publish CliTools DatabaseConverter
 call :publish CliTools FarcPack
 call :publish . MikuMikuModel
+
 call :7z x86
 call :7z x64
+
 exit /b
 
 :publish
@@ -14,7 +17,7 @@ call :pub x64 %1 %2
 exit /b
 
 :pub
-dotnet publish --runtime win-%~1 --self-contained true --output publish\%~1 --configuration Release -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true %~2\%~3\%~3.csproj
+dotnet publish --runtime win-%~1 --self-contained true --output publish\%~1 --configuration Release -p:PublishReadyToRun=true %~2\%~3\%~3.csproj
 exit /b
 
 :7z
