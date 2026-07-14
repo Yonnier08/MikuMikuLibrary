@@ -1,0 +1,60 @@
+name: Build MikuMikuModel (Winlator-optimized)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ winlator-build ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout MikuMikuLibrary
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Inject Winlator-safe runtimeconfig
+        shell: pwsh
+        run: |
+          $config = @'
+          {
+            "configProperties": {
+              "System.Runtime.Intrinsics.X86.Aes.IsSupported": false,
+              "System.Runtime.Intrinsics.X86.Avx.IsSupported": false,
+              "System.Runtime.Intrinsics.X86.Avx2.IsSupported": false,
+              "System.Runtime.Intrinsics.X86.Sse42.IsSupported": false,
+              "System.Runtime.Intrinsics.X86.Pclmulqdq.IsSupported": false,
+              "System.Threading.ThreadPool.UsePortableThreadPool": true
+            }
+          }
+          '@
+          Set-Content -Path "MikuMikuModel/runtimeconfig.template.json" -Value $config
+
+      - name: Restore
+        run: dotnet restore MikuMikuModel/MikuMikuModel.csproj
+
+      - name: Publish self-contained win-x64 (single file)
+        run: >
+          dotnet publish MikuMikuModel/MikuMikuModel.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:TieredPGO=false
+          -p:TieredCompilationQuickJit=false
+          -o publish/win-x64
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MikuMikuModel-winlator-x64
+          path: publish/win-x64/
