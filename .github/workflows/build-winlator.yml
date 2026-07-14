@@ -2,23 +2,25 @@ name: Build MikuMikuModel (Winlator-optimized)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ winlator-build ]
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout MikuMikuLibrary
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup .NET 8 SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+      - name: Install FBX SDK
+        run: |
+          Invoke-WebRequest "https://www.autodesk.com/content/dam/autodesk/www/adn/fbx/2020-3-2/fbx202032_fbxsdk_vs2019_win.exe" -OutFile "FBX.exe"
+          Start-Process -Wait -FilePath "FBX.exe" -ArgumentList "/S /D=$env:GITHUB_WORKSPACE\MikuMikuLibrary.Native\Dependencies\FBX"
+        shell: pwsh
+
+      - name: Setup MSVC environment
+        uses: microsoft/setup-msbuild@v2
 
       - name: Inject Winlator-safe runtimeconfig
         shell: pwsh
@@ -30,31 +32,27 @@ jobs:
               "System.Runtime.Intrinsics.X86.Avx.IsSupported": false,
               "System.Runtime.Intrinsics.X86.Avx2.IsSupported": false,
               "System.Runtime.Intrinsics.X86.Sse42.IsSupported": false,
-              "System.Runtime.Intrinsics.X86.Pclmulqdq.IsSupported": false,
-              "System.Threading.ThreadPool.UsePortableThreadPool": true
+              "System.Runtime.Intrinsics.X86.Pclmulqdq.IsSupported": false
             }
           }
           '@
           Set-Content -Path "MikuMikuModel/runtimeconfig.template.json" -Value $config
 
-      - name: Restore
-        run: dotnet restore MikuMikuModel/MikuMikuModel.csproj
+      - name: Build Miku Miku Library
+        run: |
+          nuget restore MikuMikuLibrary.sln
+          ./publish.bat
 
-      - name: Publish self-contained win-x64 (single file)
-        run: >
-          dotnet publish MikuMikuModel/MikuMikuModel.csproj
-          -c Release
-          -r win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true
-          -p:TieredPGO=false
-          -p:TieredCompilationQuickJit=false
-          -o publish/win-x64
-
-      - name: Upload build artifact
+      - name: Upload x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: MikuMikuModel-winlator-x64
-          path: publish/win-x64/
+          path: publish/MikuMikuLibrary-x64.7z
+          compression-level: 0
+
+      - name: Upload x86 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MikuMikuModel-winlator-x86
+          path: publish/MikuMikuLibrary-x86.7z
+          compression-level: 0
