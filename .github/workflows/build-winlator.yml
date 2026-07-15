@@ -13,6 +13,62 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Create MotCombiner project
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "MotCombiner" -Force
+
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType>
+              <TargetFramework>net8.0</TargetFramework>
+            </PropertyGroup>
+            <ItemGroup>
+              <ProjectReference Include="..\MikuMikuLibrary\MikuMikuLibrary.csproj" />
+            </ItemGroup>
+          </Project>
+          '@ | Set-Content "MotCombiner/MotCombiner.csproj"
+
+          @'
+          using System;
+          using System.IO;
+          using MikuMikuLibrary.Motions;
+
+          if (args.Length < 1)
+          {
+              Console.WriteLine("Uso: MotCombiner.exe <ruta_al_root.mot>");
+              return;
+          }
+
+          string rootPath = args[0];
+          string directory = Path.GetDirectoryName(rootPath)!;
+          string baseName = Path.GetFileNameWithoutExtension(rootPath);
+
+          var motion = new Motion();
+          motion.Load(rootPath);
+
+          int index = 0;
+          string divPath;
+          while (File.Exists(divPath = Path.Combine(directory, $"{baseName}_div_{index:00}.mot")))
+          {
+              Console.WriteLine($"Combinando: {Path.GetFileName(divPath)}");
+              var divMotion = new Motion();
+              divMotion.Load(divPath);
+              motion.Merge(divMotion);
+              index++;
+          }
+
+          string outputPath = Path.Combine(directory, $"{baseName}_combined.mot");
+          motion.Save(outputPath);
+          Console.WriteLine($"Listo: {outputPath}");
+          '@ | Set-Content "MotCombiner/Program.cs"
+
+      - name: Build MotCombiner (test compile)
+        run: |
+          dotnet restore MotCombiner/MotCombiner.csproj
+          dotnet build MotCombiner/MotCombiner.csproj -c Release
+
       - name: Install FBX SDK
         run: |
           Invoke-WebRequest "https://www.autodesk.com/content/dam/autodesk/www/adn/fbx/2020-3-2/fbx202032_fbxsdk_vs2019_win.exe" -OutFile "FBX.exe"
@@ -40,11 +96,6 @@ jobs:
           }
           '@
           Set-Content -Path "MikuMikuModel/runtimeconfig.template.json" -Value $config
-
-      - name: Patch publish.bat for self-contained build
-        shell: pwsh
-        run: |
-          (Get-Content publish.bat) -replace '--no-self-contained', '--self-contained true -p:IncludeNativeLibrariesForSelfExtract=true' | Set-Content publish.bat
 
       - name: Build Miku Miku Library
         run: |
