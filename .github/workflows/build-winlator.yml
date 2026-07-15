@@ -37,10 +37,8 @@ jobs:
 
           var asm = Assembly.Load("MikuMikuLibrary");
 
-          var namespaces = new[] { "MikuMikuLibrary.Motions", "MikuMikuLibrary.Databases" };
-
           var types = asm.GetTypes()
-              .Where(t => namespaces.Contains(t.Namespace) && (t.Name == "Skeleton" || t.Name == "BoneData" || t.Name == "MotionDatabase" || t.Name == "SkeletonBone" || t.Name.Contains("Config")))
+              .Where(t => t.Name == "Skeleton" || t.Name == "BoneData" || t.Name == "SkeletonBone")
               .OrderBy(t => t.Name);
 
           foreach (var type in types)
@@ -53,6 +51,9 @@ jobs:
                   Console.WriteLine($"  {m.ReturnType.Name} {m.Name}({ps})");
               }
           }
+
+          if (!types.Any())
+              Console.WriteLine("No se encontraron tipos con esos nombres exactos.");
           '@ | Set-Content "MotCombiner/Program.cs"
 
       - name: Build MotCombiner (test compile)
