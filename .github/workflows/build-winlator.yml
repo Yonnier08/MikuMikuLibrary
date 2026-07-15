@@ -1,4 +1,4 @@
-name: Build MikuMikuModel (Winlator-optimized)
+Name: Build MikuMikuModel (Winlator-optimized)
 
 on:
   workflow_dispatch:
@@ -66,19 +66,55 @@ jobs:
               ?? throw new Exception("No hay ningun Skeleton en el BoneData.");
           var motionDatabase = configuration.MotionDatabase;
 
-          var motion = new Motion();
-          motion.Load(rootPath, skeleton);
-          var binding = motion.Bind(skeleton, motionDatabase);
+          // 1. Cargar la animacion principal (root)
+          var mainMotion = new Motion();
+          mainMotion.Load(rootPath, skeleton);
 
           int found = 0;
-          foreach (var divFile in Directory.GetFiles(directory, $"{baseName}_div_*.mot")
-              .OrderBy(f => f))
+          foreach (var divFile in Directory.GetFiles(directory, $"{baseName}_div_*.mot").OrderBy(f => f))
           {
               Console.WriteLine($"Combinando: {Path.GetFileName(divFile)}");
               var divMotion = new Motion();
               divMotion.Load(divFile, skeleton);
-              var divBinding = divMotion.Bind(skeleton, motionDatabase);
-              binding.Merge(divBinding);
+
+              // 2. Fusionar de forma segura los canales de huesos de la motion divisional a la principal
+              foreach (var divBoneBinding in divMotion.KeySet.BoneBindings)
+              {
+                  var existingBoneBinding = mainMotion.KeySet.BoneBindings
+                      .FirstOrDefault(b => b.Name.Equals(divBoneBinding.Name, StringComparison.OrdinalIgnoreCase));
+
+                  if (existingBoneBinding == null)
+                  {
+                      // Si el hueso no existe en la animacion principal, lo agregamos completo
+                      mainMotion.KeySet.BoneBindings.Add(divBoneBinding);
+                  }
+                  else
+                  {
+                      // Si ya existe, combinamos con cuidado los keys de traslacion/rotacion que falten
+                      if (existingBoneBinding.Position == null && divBoneBinding.Position != null)
+                          existingBoneBinding.Position = divBoneBinding.Position;
+                      
+                      if (existingBoneBinding.Rotation == null && divBoneBinding.Rotation != null)
+                          existingBoneBinding.Rotation = divBoneBinding.Rotation;
+                  }
+              }
+
+              // Fusionar canales de morphs/expresiones faciales
+              foreach (var divMorphBinding in divMotion.KeySet.MorphBindings)
+              {
+                  var existingMorphBinding = mainMotion.KeySet.MorphBindings
+                      .FirstOrDefault(m => m.Name.Equals(divMorphBinding.Name, StringComparison.OrdinalIgnoreCase));
+
+                  if (existingMorphBinding == null)
+                  {
+                      mainMotion.KeySet.MorphBindings.Add(divMorphBinding);
+                  }
+              }
+
+              // Fusionar transformaciones de camara si existieran en los divs
+              if (mainMotion.KeySet.Camera == null && divMotion.KeySet.Camera != null)
+                  mainMotion.KeySet.Camera = divMotion.KeySet.Camera;
+
               found++;
           }
 
@@ -88,10 +124,20 @@ jobs:
               return;
           }
 
-          binding.Unbind(skeleton, motionDatabase);
+          // 3. Ajustar los metadatos globales del archivo final
+          // Recalculamos la duracion total para que no se corte la animacion antes de tiempo
+          float maxFrame = mainMotion.FrameCount;
+          foreach (var b in mainMotion.KeySet.BoneBindings)
+          {
+              if (b.Position != null && b.Position.KeyFrames.Count > 0)
+                  maxFrame = Math.Max(maxFrame, b.Position.KeyFrames.Max(k => k.Frame));
+              if (b.Rotation != null && b.Rotation.KeyFrames.Count > 0)
+                  maxFrame = Math.Max(maxFrame, b.Rotation.KeyFrames.Max(k => k.Frame));
+          }
+          mainMotion.FrameCount = maxFrame;
 
           string outputPath = Path.Combine(directory, $"{baseName}_combined.mot");
-          motion.Save(outputPath, skeleton);
+          mainMotion.Save(outputPath, skeleton);
           Console.WriteLine($"Listo: {outputPath}");
           '@ | Set-Content "MotCombiner/Program.cs"
 
