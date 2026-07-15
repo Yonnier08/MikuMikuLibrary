@@ -37,13 +37,15 @@ jobs:
 
           var asm = Assembly.Load("MikuMikuLibrary");
 
-          var motionTypes = asm.GetTypes()
-              .Where(t => t.Namespace == "MikuMikuLibrary.Motions")
+          var namespaces = new[] { "MikuMikuLibrary.Motions", "MikuMikuLibrary.Databases" };
+
+          var types = asm.GetTypes()
+              .Where(t => namespaces.Contains(t.Namespace) && (t.Name == "Skeleton" || t.Name == "BoneData" || t.Name == "MotionDatabase" || t.Name == "SkeletonBone" || t.Name.Contains("Config")))
               .OrderBy(t => t.Name);
 
-          foreach (var type in motionTypes)
+          foreach (var type in types)
           {
-              Console.WriteLine($"=== {type.Name} ===");
+              Console.WriteLine($"=== {type.FullName} ===");
               var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
               foreach (var m in methods)
               {
