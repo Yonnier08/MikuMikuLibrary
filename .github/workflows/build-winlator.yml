@@ -22,10 +22,12 @@ jobs:
           <Project Sdk="Microsoft.NET.Sdk">
             <PropertyGroup>
               <OutputType>Exe</OutputType>
-              <TargetFramework>net8.0</TargetFramework>
+              <TargetFramework>net8.0-windows</TargetFramework>
+              <UseWindowsForms>true</UseWindowsForms>
             </PropertyGroup>
             <ItemGroup>
               <ProjectReference Include="..\MikuMikuLibrary\MikuMikuLibrary.csproj" />
+              <ProjectReference Include="..\MikuMikuModel\MikuMikuModel.csproj" />
             </ItemGroup>
           </Project>
           '@ | Set-Content "MotCombiner/MotCombiner.csproj"
@@ -35,10 +37,10 @@ jobs:
           using System.Linq;
           using System.Reflection;
 
-          var asm = Assembly.Load("MikuMikuLibrary");
+          var asm = Assembly.Load("MikuMikuModel");
 
           var types = asm.GetTypes()
-              .Where(t => t.Name == "Skeleton" || t.Name == "BoneData" || t.Name == "SkeletonBone")
+              .Where(t => t.Name == "Configuration" || t.Name == "ConfigurationList")
               .OrderBy(t => t.Name);
 
           foreach (var type in types)
