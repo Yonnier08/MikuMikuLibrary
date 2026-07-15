@@ -34,37 +34,93 @@ jobs:
 
           @'
           using System;
+          using System.IO;
           using System.Linq;
-          using System.Reflection;
+          using MikuMikuLibrary.Motions;
+          using MikuMikuModel.Configurations;
 
-          var asm = Assembly.Load("MikuMikuModel");
-
-          var types = asm.GetTypes()
-              .Where(t => t.Name == "Configuration" || t.Name == "ConfigurationList")
-              .OrderBy(t => t.Name);
-
-          foreach (var type in types)
+          if (args.Length < 1)
           {
-              Console.WriteLine($"=== {type.FullName} ===");
-              var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
-              foreach (var m in methods)
-              {
-                  var ps = string.Join(", ", m.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
-                  Console.WriteLine($"  {m.ReturnType.Name} {m.Name}({ps})");
-              }
+              Console.WriteLine("Uso: MotCombiner.exe <ruta_al_root.mot>");
+              return;
           }
 
-          if (!types.Any())
-              Console.WriteLine("No se encontraron tipos con esos nombres exactos.");
+          string rootPath = Path.GetFullPath(args[0]);
+          string directory = Path.GetDirectoryName(rootPath)!;
+          string baseName = Path.GetFileNameWithoutExtension(rootPath);
+
+          var configList = ConfigurationList.Instance;
+          configList.DetermineCurrentConfiguration(rootPath);
+          var configuration = configList.CurrentConfiguration
+              ?? configList.FindConfiguration(rootPath)
+              ?? throw new Exception("No se encontro una configuracion para esta carpeta.");
+
+          Console.WriteLine($"Usando configuracion: {configuration.Name}");
+
+          var boneData = configuration.BoneData
+              ?? throw new Exception("La configuracion no tiene BoneData cargado.");
+          var skeleton = boneData.Skeletons.FirstOrDefault()
+              ?? throw new Exception("No hay ningun Skeleton en el BoneData.");
+          var motionDatabase = configuration.MotionDatabase;
+
+          var motion = new Motion();
+          motion.Load(rootPath, skeleton);
+          var binding = motion.Bind(skeleton, motionDatabase);
+
+          int index = 0;
+          string divPath;
+          while (File.Exists(divPath = Path.Combine(directory, $"{baseName}_div_{index:00}.mot")))
+          {
+              Console.WriteLine($"Combinando: {Path.GetFileName(divPath)}");
+              var divMotion = new Motion();
+              divMotion.Load(divPath, skeleton);
+              var divBinding = divMotion.Bind(skeleton, motionDatabase);
+              binding.Merge(divBinding);
+              index++;
+          }
+
+          if (index == 0)
+          {
+              Console.WriteLine("No se encontraron archivos _div_## junto al root. Nada que combinar.");
+              return;
+          }
+
+          binding.Unbind(skeleton, motionDatabase);
+
+          string outputPath = Path.Combine(directory, $"{baseName}_combined.mot");
+          motion.Save(outputPath, skeleton);
+          Console.WriteLine($"Listo: {outputPath}");
           '@ | Set-Content "MotCombiner/Program.cs"
+
+          $config = @'
+          {
+            "configProperties": {
+              "System.Runtime.Intrinsics.X86.Aes.IsSupported": false,
+              "System.Runtime.Intrinsics.X86.Avx.IsSupported": false,
+              "System.Runtime.Intrinsics.X86.Avx2.IsSupported": false,
+              "System.Runtime.Intrinsics.X86.Sse42.IsSupported": false,
+              "System.Runtime.Intrinsics.X86.Pclmulqdq.IsSupported": false,
+              "System.GC.Server": false,
+              "System.GC.Concurrent": false,
+              "System.GC.HeapHardLimit": 536870912
+            }
+          }
+          '@
+          Set-Content -Path "MotCombiner/runtimeconfig.template.json" -Value $config
 
       - name: Build MotCombiner (test compile)
         run: |
           dotnet restore MotCombiner/MotCombiner.csproj
           dotnet build MotCombiner/MotCombiner.csproj -c Release
 
-      - name: Run reflection dump
-        run: dotnet run --project MotCombiner/MotCombiner.csproj -c Release
+      - name: Publish MotCombiner
+        run: dotnet publish MotCombiner/MotCombiner.csproj -c Release -r win-x64 --self-contained true -o publish/MotCombiner-x64
+
+      - name: Upload MotCombiner artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotCombiner-x64
+          path: publish/MotCombiner-x64/
 
       - name: Install FBX SDK
         run: |
